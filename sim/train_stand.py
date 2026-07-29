@@ -174,10 +174,18 @@ def main():
     p.add_argument("--num-envs", type=int, default=16)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=str, default="checkpoints/stand.pt")
+    p.add_argument("--resume", type=str, default=None, help="checkpoint to continue from")
     args = p.parse_args()
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    net = ActorCritic()
+    if args.resume:
+        from sim.policy import load_policy
+
+        net = load_policy(args.resume)
+        net.train()
+        print(f"resumed from {args.resume}")
+    else:
+        net = ActorCritic()
     train(
         net,
         total_steps=args.total_steps,

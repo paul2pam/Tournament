@@ -47,23 +47,48 @@ def clip_json(window: np.ndarray) -> dict:
     }
 
 
-def rollout_policy(net, policy_id: int, base_seed: int, n_clips: int = CLIPS_PER_POLICY):
+def rollout_policy(
+    net,
+    policy_id: int,
+    base_seed: int,
+    n_clips: int = CLIPS_PER_POLICY,
+    prefer_alive: bool = False,
+):
     """Roll out a policy into candidate clips.
+
+    prefer_alive: sample extra candidate windows and keep the ones that pass the
+    degeneracy check / have the most upright frames. Used for the bootstrap seed
+    incumbent, whose weak policy spends most of each episode fallen — better to
+    show it trying and falling than the aftermath. Normal challenger rollouts
+    keep unbiased sampling (spec §7: window choice must not become a tell).
 
     Returns (clips, episodes):
       clips: list of {seed, window_start_s, blob_key, frames} — frames kept in-memory
              for the degeneracy filter and descriptors; blob already written.
       episodes: {seed: full episode frames} for policy-level descriptors.
     """
+    from sim.degeneracy import check_clip
+
     n_episodes = max(1, n_clips // 2)
+    per_ep = n_clips // n_episodes
     rng = np.random.default_rng(base_seed)
     clips, episodes = [], {}
     for e in range(n_episodes):
         seed = base_seed + e
         ep = run_episode(net, seed)
         episodes[seed] = ep
-        for start in sample_windows(rng, n=n_clips // n_episodes):
-            window = ep[start : start + CLIP_FRAMES]
+        starts = sample_windows(rng, n=10 if prefer_alive else per_ep)
+        windows = [(s, ep[s : s + CLIP_FRAMES]) for s in starts]
+        if prefer_alive:
+            windows.sort(
+                key=lambda sw: (
+                    check_clip(sw[1]) is None,          # passing the filter first
+                    float((sw[1][:, 2] > 0.9).mean()),  # then most upright frames
+                ),
+                reverse=True,
+            )
+            windows = windows[:per_ep]
+        for start, window in windows:
             key = f"clips/{policy_id}/{seed}_{start}.json.gz"
             blobs.put_json(key, clip_json(window))
             clips.append(

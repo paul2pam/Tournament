@@ -65,8 +65,11 @@ async def set_state(conn, key: str, value: str) -> None:
 # ---------------------------------------------------------------- clip creation
 
 async def add_policy_clips(conn, policy_id: int, net, rng, skip_filter: bool = False) -> int:
-    """Roll out, filter (with 15% leak), store descriptors + clip rows. Returns kept count."""
-    clips, episodes = rollout_policy(net, policy_id, base_seed=policy_id * 1000)
+    """Roll out, filter (with 15% leak), store descriptors + clip rows. Returns kept count.
+    skip_filter also biases window sampling toward upright frames (bootstrap seed)."""
+    clips, episodes = rollout_policy(
+        net, policy_id, base_seed=policy_id * 1000, prefer_alive=skip_filter
+    )
     dv, dh = policy_descriptors(episodes)
     await conn.execute(
         "UPDATE policies SET desc_velocity=$2, desc_torso_h=$3 WHERE id=$1",
