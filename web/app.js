@@ -53,6 +53,9 @@ function showNext() {
   }
   viewL.setClip(current.clips[0].trajectory);   // index 0 renders left (server randomized)
   viewR.setClip(current.clips[1].trajectory);
+  if ($('feedback').textContent === 'loading…') {
+    $('feedback').textContent = 'pick whichever looks more alive';
+  }
   shownAt = performance.now();
   document.querySelectorAll('.pane').forEach((p) => p.classList.remove('chosen'));
 }

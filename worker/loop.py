@@ -378,7 +378,9 @@ async def bootstrap(conn, rng, stand_ckpt: str = "checkpoints/stand.pt") -> None
     await conn.execute(
         "UPDATE policies SET ckpt_path=$2, promoted_at=now() WHERE id=$1", inc_id, ckpt
     )
-    kept = await add_policy_clips(conn, inc_id, net, rng)
+    # skip_filter: the seed incumbent must always be showable, however wobbly —
+    # "seed for coverage, not competence" (spec §7). The filter gates challengers.
+    kept = await add_policy_clips(conn, inc_id, net, rng, skip_filter=True)
     print(f"  incumbent p{inc_id}: {kept} clips")
 
     rag_id = await insert_policy(conn, 0, None, "ragdoll")
