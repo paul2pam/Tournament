@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which one is trying?</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    background: #0e1116; color: #e6e9ee;
+    font: 15px/1.45 system-ui, -apple-system, sans-serif;
+    min-height: 100dvh; display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 10px 16px; gap: 12px;
+  }
+  header h1 { font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+  header .stats { font-size: 13px; color: #8b94a3; font-variant-numeric: tabular-nums; }
+  header a { color: #8b94a3; }
+  .prompt { text-align: center; color: #aab3c0; font-size: 14px; padding: 2px 16px 8px; }
+
+  .arena { position: relative; flex: 1; min-height: 0; padding: 0 10px 10px; }
+  #gl { position: absolute; inset: 0 10px 10px; width: calc(100% - 20px); height: calc(100% - 10px); z-index: 0; }
+  .panes { position: relative; display: flex; gap: 10px; height: 100%; z-index: 1; }
+  .pane {
+    flex: 1; border: 2px solid #29303b; border-radius: 10px; cursor: pointer;
+    position: relative; transition: border-color .12s;
+  }
+  .pane:hover { border-color: #5b8bd8; }
+  .pane.chosen { border-color: #62d086; }
+  .pane .tag {
+    position: absolute; top: 8px; left: 10px; font-size: 12px; color: #6d7684;
+    background: #0e1116cc; padding: 2px 7px; border-radius: 6px; pointer-events: none;
+  }
+  @media (max-width: 640px) {
+    .panes { flex-direction: column; }   /* spec §6: mobile stacks vertically */
+  }
+
+  footer {
+    padding: 8px 16px 12px; display: flex; justify-content: space-between;
+    align-items: center; gap: 12px; min-height: 46px;
+  }
+  #feedback { font-size: 13px; color: #8b94a3; }
+  #ticks { display: flex; gap: 3px; }
+  #ticks span { width: 8px; height: 8px; border-radius: 2px; background: #232a34; }
+  #ticks span.on { background: #5b8bd8; }
+
+  .overlay {
+    position: fixed; inset: 0; background: #0e1116e6; z-index: 10;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; gap: 10px;
+  }
+  .overlay.show { display: flex; }
+  .overlay h2 { font-size: 22px; }
+  .overlay p { color: #aab3c0; max-width: 420px; }
+  .overlay button {
+    margin-top: 10px; background: #5b8bd8; color: #0e1116; border: 0;
+    padding: 9px 22px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .promoted h2 { color: #62d086; }
+  .rejected h2 { color: #d87a5b; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Which one looks like it&rsquo;s trying to do something?</h1>
+    <div class="stats">
+      gen <span id="gen">–</span> · <span id="totalVotes">–</span> votes ·
+      <a href="timeline.html">lineage</a>
+    </div>
+  </header>
+  <div class="prompt">Click a clip (or use ← →). The winner shapes the next generation.</div>
+
+  <div class="arena">
+    <canvas id="gl"></canvas>
+    <div class="panes">
+      <div class="pane" id="paneL"><span class="tag">A</span></div>
+      <div class="pane" id="paneR"><span class="tag">B</span></div>
+    </div>
+  </div>
+
+  <footer>
+    <div id="feedback">loading…</div>
+    <div id="ticks"></div>
+  </footer>
+
+  <div class="overlay" id="overlay">
+    <h2 id="ovTitle"></h2>
+    <p id="ovBody"></p>
+    <button id="ovBtn">keep voting</button>
+  </div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

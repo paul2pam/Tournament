@@ -29,9 +29,13 @@ CLIPS_PER_POLICY = 4
 CONTEST_MAX_COMPARISONS = 20
 CONTEST_POSTERIOR_THRESHOLD = 0.95
 
-# Challenger pool
-POOL_SIZE = 6
+# Challenger pool (env-overridable so the Phase 1 harness can run small/fast)
+POOL_SIZE = int(os.environ.get("POOL_SIZE", 6))
 PERTURB_SCALES = [0.01, 0.02, 0.05, 0.08, 0.12, 0.2]
+FINETUNE_STEPS = int(os.environ.get("FINETUNE_STEPS", 40_960))
+
+# Pair queue refill target (unconsumed rows)
+QUEUE_TARGET = int(os.environ.get("QUEUE_TARGET", 200))
 
 # Degeneracy filter
 LEAK_RATE = 0.15

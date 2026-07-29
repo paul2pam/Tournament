@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The lineage</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; box-sizing: border-box; }
+  body { background: #0e1116; color: #e6e9ee; font: 15px/1.5 system-ui, sans-serif; }
+  header { padding: 16px; display: flex; justify-content: space-between; align-items: baseline; }
+  header h1 { font-size: 17px; }
+  header a { color: #8b94a3; }
+  #list { display: flex; flex-direction: column; gap: 14px; padding: 0 16px 32px; max-width: 720px; margin: 0 auto; }
+  .entry { border: 1px solid #232a34; border-radius: 10px; overflow: hidden; }
+  .entry .meta { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 13px; color: #8b94a3; }
+  .entry .meta b { color: #e6e9ee; }
+  .entry canvas { width: 100%; height: 240px; display: block; background: #14171c; }
+  .current { border-color: #62d086; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Every incumbent, in order. The internet built this lineage.</h1>
+    <a href="./">back to voting</a>
+  </header>
+  <div id="list">loading…</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import { loadSkeleton, ClipView } from './renderer.js';
+import * as THREE from 'three';
+
+const [skel, data] = await Promise.all([
+  loadSkeleton(),
+  (await fetch('/timeline')).json(),
+]);
+
+const list = document.getElementById('list');
+list.textContent = '';
+
+// One shared offscreen WebGL renderer, blitted onto each visible entry's 2D canvas —
+// avoids the per-page WebGL context limit no matter how long the lineage gets.
+const off = document.createElement('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas: off, antialias: true });
+const entries = [];
+
+for (const item of data.timeline) {
+  const div = document.createElement('div');
+  div.className = 'entry' + (item.current ? ' current' : '');
+  const when = new Date(item.promoted_at).toLocaleString();
+  div.innerHTML = `<div class="meta">
+      <span><b>generation ${item.generation}</b>${item.current ? ' · current' : ''}</span>
+      <span>promoted ${when}</span></div>`;
+  const canvas = document.createElement('canvas');
+  div.appendChild(canvas);
+  list.appendChild(div);
+  if (!item.clip) continue;
+  const view = new ClipView(skel);
+  view.setClip(item.clip.trajectory);
+  entries.push({ view, canvas, visible: false });
+}
+
+const io = new IntersectionObserver((obs) => {
+  for (const o of obs) {
+    const e = entries.find((e) => e.canvas === o.target);
+    if (e) e.visible = o.isIntersecting;
+  }
+});
+entries.forEach((e) => io.observe(e.canvas));
+
+function frame(now) {
+  for (const e of entries) {
+    if (!e.visible) continue;
+    const w = e.canvas.clientWidth, h = e.canvas.clientHeight;
+    if (e.canvas.width !== w || e.canvas.height !== h) { e.canvas.width = w; e.canvas.height = h; }
+    renderer.setSize(w, h, false);
+    e.view.tick(now);
+    e.view.camera.aspect = w / h;
+    e.view.camera.updateProjectionMatrix();
+    renderer.render(e.view.scene, e.view.camera);
+    e.canvas.getContext('2d').drawImage(off, 0, 0);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
