@@ -54,7 +54,7 @@ function showNext() {
   viewL.setClip(current.clips[0].trajectory);   // index 0 renders left (server randomized)
   viewR.setClip(current.clips[1].trajectory);
   if ($('feedback').textContent === 'loading…') {
-    $('feedback').textContent = 'pick whichever looks more alive';
+    $('feedback').textContent = 'pick whichever is closer to a backflip';
   }
   shownAt = performance.now();
   document.querySelectorAll('.pane').forEach((p) => p.classList.remove('chosen'));
@@ -131,8 +131,8 @@ async function vote(sideIdx) {
   // Layer 3: session card every ~20 votes.
   if (votesThisSession > 0 && votesThisSession % 20 === 0) {
     overlay('session', `${votesThisSession} votes this session`,
-      'You are one of the hands steering this thing. Share the link — ' +
-      'the creature only moves while people are voting.');
+      'You are one of the hands teaching this thing to backflip. Share the link — ' +
+      'it only gets closer while people are voting.');
   }
 
   voting = false;
