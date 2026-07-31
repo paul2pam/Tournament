@@ -112,7 +112,7 @@ def train(
             act_buf[s] = action
             logp_buf[s] = logp
             val_buf[s] = value.flatten()
-            o, r, d = venv.step(action.numpy())
+            o, r, d = venv.step(action.numpy())[:3]
             rew_buf[s] = torch.as_tensor(r)
             next_obs = torch.as_tensor(o, dtype=torch.float32)
             next_done = torch.as_tensor(d)

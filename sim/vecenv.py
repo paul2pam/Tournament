@@ -32,7 +32,7 @@ def _worker(pipe, seed: int, horizon: int):
         if done:
             obs = env.reset()
             t, ep_ret = 0, 0.0
-        pipe.send((obs, r, done, finished))
+        pipe.send((obs, r, done, term, finished))
     pipe.close()
 
 
@@ -60,17 +60,25 @@ class SubprocVecEnv:
         return self._initial_obs
 
     def step(self, actions: np.ndarray):
+        """Returns (obs, rew, done, term). done includes horizon truncation; term is
+        true environment termination only (SAC bootstraps through truncation)."""
         for pipe, a in zip(self.pipes, actions):
             pipe.send(a)
-        obs, rews, dones = [], [], []
+        obs, rews, dones, terms = [], [], [], []
         for pipe in self.pipes:
-            o, r, d, fin = pipe.recv()
+            o, r, d, t, fin = pipe.recv()
             obs.append(o)
             rews.append(r)
             dones.append(d)
+            terms.append(t)
             if fin is not None:
                 self.finished_returns.append(fin)
-        return np.stack(obs), np.array(rews, dtype=np.float32), np.array(dones, dtype=np.float32)
+        return (
+            np.stack(obs),
+            np.array(rews, dtype=np.float32),
+            np.array(dones, dtype=np.float32),
+            np.array(terms, dtype=np.float32),
+        )
 
     def close(self):
         for pipe in self.pipes:
