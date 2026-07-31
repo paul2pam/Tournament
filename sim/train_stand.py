@@ -163,7 +163,7 @@ def train(
             recent = venv.finished_returns[-20:]
             mean_ret = float(np.mean(recent)) if recent else float("nan")
             sps = int(global_step / (time.time() - t0))
-            std = float(net.actor_logstd.exp().mean())
+            std = float(net.actor_logstd.detach().exp().mean())
             print(
                 f"iter {it}/{num_iterations}  steps {global_step}  "
                 f"ep_return(last20) {mean_ret:.1f}  std {std:.3f}  sps {sps}",
