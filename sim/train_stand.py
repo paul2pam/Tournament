@@ -163,9 +163,10 @@ def train(
             recent = venv.finished_returns[-20:]
             mean_ret = float(np.mean(recent)) if recent else float("nan")
             sps = int(global_step / (time.time() - t0))
+            std = float(net.actor_logstd.exp().mean())
             print(
                 f"iter {it}/{num_iterations}  steps {global_step}  "
-                f"ep_return(last20) {mean_ret:.1f}  sps {sps}",
+                f"ep_return(last20) {mean_ret:.1f}  std {std:.3f}  sps {sps}",
                 flush=True,
             )
             if save_path:
@@ -186,7 +187,12 @@ def main():
     p.add_argument("--out", type=str, default="checkpoints/stand.pt")
     p.add_argument("--resume", type=str, default=None, help="checkpoint to continue from")
     p.add_argument("--subproc", action="store_true", help="one process per env (cluster)")
+    p.add_argument("--num-steps", type=int, default=128)
+    p.add_argument("--ent-coef", type=float, default=0.0)
+    p.add_argument("--fresh", action="store_true", help="ignore --resume, start from scratch")
     args = p.parse_args()
+    if args.fresh:
+        args.resume = None
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     if args.resume:
@@ -201,6 +207,8 @@ def main():
         net,
         total_steps=args.total_steps,
         num_envs=args.num_envs,
+        num_steps=args.num_steps,
+        ent_coef=args.ent_coef,
         seed=args.seed,
         save_path=args.out,
         subproc=args.subproc,
