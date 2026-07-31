@@ -20,6 +20,8 @@ class VecEnv:
 
     def __init__(self, n: int, seed: int, horizon: int = 1000):
         self.envs = [HumanoidEnv(seed=seed + i) for i in range(n)]
+        self.obs_dim = self.envs[0].obs_dim
+        self.act_dim = self.envs[0].act_dim
         self.horizon = horizon
         self.t = np.zeros(n, dtype=int)
         self.ep_ret = np.zeros(n)
@@ -67,19 +69,25 @@ def train(
     log_every: int = 5,
     save_path: str | None = None,
     quiet: bool = False,
+    subproc: bool = False,
 ) -> ActorCritic:
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    venv = VecEnv(num_envs, seed=seed * 1000 + 1)
+    if subproc:
+        from sim.vecenv import SubprocVecEnv
+
+        venv = SubprocVecEnv(num_envs, seed=seed * 1000 + 1)
+    else:
+        venv = VecEnv(num_envs, seed=seed * 1000 + 1)
     opt = torch.optim.Adam(net.parameters(), lr=lr, eps=1e-5)
 
     batch_size = num_envs * num_steps
     minibatch_size = batch_size // num_minibatches
     num_iterations = max(1, total_steps // batch_size)
 
-    obs_buf = torch.zeros(num_steps, num_envs, venv.envs[0].obs_dim)
-    act_buf = torch.zeros(num_steps, num_envs, venv.envs[0].act_dim)
+    obs_buf = torch.zeros(num_steps, num_envs, venv.obs_dim)
+    act_buf = torch.zeros(num_steps, num_envs, venv.act_dim)
     logp_buf = torch.zeros(num_steps, num_envs)
     rew_buf = torch.zeros(num_steps, num_envs)
     done_buf = torch.zeros(num_steps, num_envs)
@@ -165,6 +173,8 @@ def train(
 
     if save_path:
         save_policy(net, save_path)
+    if hasattr(venv, "close"):
+        venv.close()
     return net
 
 
@@ -175,6 +185,7 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=str, default="checkpoints/stand.pt")
     p.add_argument("--resume", type=str, default=None, help="checkpoint to continue from")
+    p.add_argument("--subproc", action="store_true", help="one process per env (cluster)")
     args = p.parse_args()
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +203,7 @@ def main():
         num_envs=args.num_envs,
         seed=args.seed,
         save_path=args.out,
+        subproc=args.subproc,
     )
     print(f"saved {args.out}")
 

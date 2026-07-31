@@ -57,7 +57,7 @@ ENVS=$(( CORES > 24 ? 48 : CORES * 2 ))
 RESUME_ARGS=""
 [ -f checkpoints/stand.pt ] && RESUME_ARGS="--resume checkpoints/stand.pt"
 cd "$REMOTE_DIR"
-OMP_NUM_THREADS=4 nohup nice "$PYBIN/python" -m sim.train_stand $RESUME_ARGS \
+OMP_NUM_THREADS=8 nohup nice "$PYBIN/python" -m sim.train_stand $RESUME_ARGS --subproc \
   --total-steps 20000000 --num-envs "$ENVS" --out checkpoints/stand.pt "$@" \
   > logs/train_stand.log 2>&1 &
 echo "launched pid $! on $(hostname) with $ENVS envs ($CORES cores)"
