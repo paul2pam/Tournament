@@ -18,7 +18,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "==> sync repo -> ${CSL_USER}@${HOST}:${REMOTE_DIR}"
 rsync -az --delete \
-  --exclude .git --exclude .venv --exclude env --exclude blobs --exclude __pycache__ --exclude logs \
+  --exclude .git --exclude .venv --exclude env --exclude env-gpu --exclude blobs \
+  --exclude __pycache__ --exclude logs \
   "$REPO_ROOT/" "${CSL_USER}@${HOST}:${REMOTE_DIR}/"
 # checkpoints/ ships intentionally: the cluster resumes from the laptop's stand.pt.
 
