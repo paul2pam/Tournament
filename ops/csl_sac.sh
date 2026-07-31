@@ -29,8 +29,10 @@ else
   [ -d "$REMOTE_DIR/env-gpu" ] || python3 -m venv "$REMOTE_DIR/env-gpu"
 fi
 PYBIN="$REMOTE_DIR/env-gpu/bin"
-# default PyPI torch wheel bundles CUDA — needed for the L40S
-"$PYBIN/pip" install --quiet mujoco==3.2.7 numpy torch
+# CSL driver is 550.x = CUDA 12.4 max; current PyPI torch is built on CUDA 13
+# and refuses to initialize. Pin the cu124 build.
+"$PYBIN/pip" install --quiet mujoco==3.2.7 numpy
+"$PYBIN/pip" install --quiet torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
 # pick the GPU with the most free memory (shared box — stay out of the busy ones)
 GPU=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits | sort -t, -k2 -rn | head -1 | cut -d, -f1)
