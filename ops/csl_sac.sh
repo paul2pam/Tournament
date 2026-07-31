@@ -21,12 +21,14 @@ ssh "${CSL_USER}@${HOST}" REMOTE_DIR="$REMOTE_DIR" 'bash -s' -- "$@" <<'REMOTE'
 set -euo pipefail
 cd "$REMOTE_DIR"
 mkdir -p logs
+# /home/kaiyan3 is NFS-shared across cm hosts: env/ holds the CPU torch the PPO
+# run depends on. SAC gets its own env-gpu/ with CUDA torch — never touch env/.
 if command -v conda >/dev/null 2>&1 || { [ -f /etc/profile.d/conda.sh ] && source /etc/profile.d/conda.sh; }; then
-  [ -d "$REMOTE_DIR/env" ] || conda create -y -p "$REMOTE_DIR/env" python=3.11 >/dev/null
+  [ -d "$REMOTE_DIR/env-gpu" ] || conda create -y -p "$REMOTE_DIR/env-gpu" python=3.11 >/dev/null
 else
-  [ -d "$REMOTE_DIR/env" ] || python3 -m venv "$REMOTE_DIR/env"
+  [ -d "$REMOTE_DIR/env-gpu" ] || python3 -m venv "$REMOTE_DIR/env-gpu"
 fi
-PYBIN="$REMOTE_DIR/env/bin"
+PYBIN="$REMOTE_DIR/env-gpu/bin"
 # default PyPI torch wheel bundles CUDA — needed for the L40S
 "$PYBIN/pip" install --quiet mujoco==3.2.7 numpy torch
 
