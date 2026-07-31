@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Pull the latest trained checkpoint (and training log tail) back from CSL.
 #
-#   CSL_HOST=netid@somehost.cs.illinois.edu ops/csl_pull.sh
+#   ops/csl_pull.sh [host]
 set -euo pipefail
 
-: "${CSL_HOST:?set CSL_HOST=netid@host.cs.illinois.edu}"
-REMOTE_DIR="${REMOTE_DIR:-~/tournament}"
+HOST="${1:-az007.csl.illinois.edu}"
+CSL_USER="${CSL_USER:-kaiyan3}"
+CSL_HOST="${CSL_USER}@${HOST}"
+REMOTE_DIR="/home/${CSL_USER}/paulcp2/tournament"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 rsync -az "$CSL_HOST:$REMOTE_DIR/checkpoints/stand.pt" "$REPO_ROOT/checkpoints/stand.pt"
