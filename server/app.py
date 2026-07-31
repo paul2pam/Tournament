@@ -158,9 +158,10 @@ async def post_vote(vote: VoteIn, request: Request):
                 outcome = resolve(w_wins, w_total, n)
                 if outcome:
                     await conn.execute(
-                        """UPDATE contests SET status=$2, resolved_at=now()
+                        """UPDATE contests SET status=$2, resolved_at=now(),
+                               n_comparisons=$3, n_challenger_wins=$4
                            WHERE id=$1 AND status='open'""",
-                        ct["id"], outcome,
+                        ct["id"], outcome, n, int(round(w_wins)),
                     )
                     # old/new relative to this pair: which shown clip belongs to whom
                     a_policy = await conn.fetchval(
