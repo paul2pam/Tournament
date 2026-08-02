@@ -12,6 +12,8 @@ Simulates a mixed population so trust scoring gets exercised:
 
 Usage (library):  run_votes(base_url, n_votes, rng, bot_frac=0.2, metric="velocity")
 """
+import time
+
 import numpy as np
 import httpx
 
@@ -52,9 +54,22 @@ def run_votes(
         {"id": f"synth-{i}", "bot": rng.random() < bot_frac} for i in range(n_sessions)
     ]
     stats = {"votes": 0, "resolutions": [], "checks_passed": 0, "checks_failed": 0}
+    consecutive_failures = 0
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         while stats["votes"] < n_votes:
-            pairs = client.get("/pairs", params={"n": 5}).json()["pairs"]
+            # tolerate transient server errors (e.g. worker pruning mid-request) —
+            # a multi-hour harness run must not die on one bad response
+            try:
+                r = client.get("/pairs", params={"n": 5})
+                r.raise_for_status()
+                pairs = r.json()["pairs"]
+                consecutive_failures = 0
+            except Exception:
+                consecutive_failures += 1
+                if consecutive_failures >= 5:
+                    raise
+                time.sleep(2.0 * consecutive_failures)
+                continue
             if not pairs:
                 break
             for pair in pairs:

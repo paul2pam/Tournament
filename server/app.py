@@ -59,6 +59,10 @@ async def get_pairs(n: int = 5):
                 ), await conn.fetchval("SELECT blob_key FROM clips WHERE id=$1", r["clip_b"])
                 if not ka or not kb:
                     continue   # blob pruned between queueing and serving; skip
+                try:
+                    trajs = [_traj(ka), _traj(kb)]
+                except FileNotFoundError:
+                    continue   # pruned between the SELECT above and the disk read
                 await conn.execute(
                     "UPDATE clips SET n_views = n_views + 1 WHERE id = ANY($1::bigint[])",
                     [r["clip_a"], r["clip_b"]],
@@ -67,8 +71,8 @@ async def get_pairs(n: int = 5):
                     {
                         "pair_token": r["pair_token"],
                         "clips": [
-                            {"id": r["clip_a"], "trajectory": _traj(ka)},
-                            {"id": r["clip_b"], "trajectory": _traj(kb)},
+                            {"id": r["clip_a"], "trajectory": trajs[0]},
+                            {"id": r["clip_b"], "trajectory": trajs[1]},
                         ],
                     }
                 )
