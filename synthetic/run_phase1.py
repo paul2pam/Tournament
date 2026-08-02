@@ -2,12 +2,16 @@
 synthetic voter must converge before humans touch it.
 
 Resets the DB, bootstraps from the standing checkpoint, then alternates synthetic
-vote batches (torso-height preference, 10% noise, 20% bot sessions) with worker
-cycles until 10 generations have passed. Asserts:
-  1. desc_torso_h of successive incumbents is non-decreasing (tolerance 1cm —
-     vote noise can promote a marginal challenger; a real regression fails).
-  2. Every resolved contest consumed 3-20 comparisons (counted from votes, not
-     the cached column).
+vote batches (10% noise, 20% bot sessions) with worker cycles until 10 generations
+have passed. Default preference metric is velocity — the seed stander is
+stationary, so "prefers moving" has real headroom; height is at its ceiling once
+Phase 0 passes (the run that used it stalled at gen 5/10 on pure tie-breaking).
+Asserts:
+  1. The incumbent's preferred metric is non-decreasing across promotions
+     (small tolerance — vote noise can promote a marginal challenger).
+  2. Every sequentially-resolved contest consumed 3-20 comparisons, counting
+     only votes cast before resolution (stragglers on already-issued pairs
+     land after) and excluding contests mooted at generation turnover.
 
 Requires: Postgres up, server running on --base-url, NO external worker loop
 (this harness owns worker cadence).
@@ -30,7 +34,8 @@ import numpy as np
 from common.config import DATABASE_URL
 from synthetic.voter import run_votes
 
-HEIGHT_TOLERANCE = 0.01
+METRIC_COLUMN = {"torso_h": "desc_torso_h", "velocity": "desc_velocity"}
+METRIC_TOLERANCE = {"torso_h": 0.01, "velocity": 0.02}
 
 
 def run_worker(args_list, env_overrides):
@@ -62,7 +67,10 @@ async def amain():
     p.add_argument("--votes-per-batch", type=int, default=30)
     p.add_argument("--max-batches", type=int, default=300)
     p.add_argument("--seed", type=int, default=1234)
+    p.add_argument("--metric", choices=list(METRIC_COLUMN), default="velocity")
     args = p.parse_args()
+    metric_col = METRIC_COLUMN[args.metric]
+    tolerance = METRIC_TOLERANCE[args.metric]
 
     env_overrides = {
         "POOL_SIZE": str(args.pool_size),
@@ -81,31 +89,32 @@ async def amain():
     subprocess.run(["rm", "-rf", "blobs/clips", "checkpoints/policies"], check=True)
     run_worker(["--bootstrap", "--stand-ckpt", args.stand_ckpt, "--seed", str(args.seed)], env_overrides)
 
-    heights = []  # (generation, incumbent policy id, desc_torso_h) at each promotion
+    metrics = []  # (generation, incumbent policy id, metric value) at each promotion
     t0 = time.time()
     batches = 0
 
     async def incumbent_row():
         return await conn.fetchrow(
-            "SELECT id, generation, desc_torso_h FROM policies WHERE status='incumbent'"
+            f"SELECT id, generation, {metric_col} AS m FROM policies WHERE status='incumbent'"
         )
 
     inc = await incumbent_row()
-    heights.append((inc["generation"], inc["id"], inc["desc_torso_h"]))
-    print(f"gen {inc['generation']}: incumbent p{inc['id']} torso_h={inc['desc_torso_h']:.4f}", flush=True)
+    metrics.append((inc["generation"], inc["id"], inc["m"]))
+    print(f"gen {inc['generation']}: incumbent p{inc['id']} {args.metric}={inc['m']:.4f}", flush=True)
 
-    while heights[-1][0] < args.target_gens and batches < args.max_batches:
+    while metrics[-1][0] < args.target_gens and batches < args.max_batches:
         stats = run_votes(
-            args.base_url, args.votes_per_batch, rng, bot_frac=0.2, noise=0.10
+            args.base_url, args.votes_per_batch, rng, bot_frac=0.2, noise=0.10,
+            metric=args.metric,
         )
         batches += 1
         run_worker(["--cycle", "--seed", str(args.seed + batches)], env_overrides)
         inc = await incumbent_row()
-        if inc["generation"] != heights[-1][0]:
-            heights.append((inc["generation"], inc["id"], inc["desc_torso_h"]))
+        if inc["generation"] != metrics[-1][0]:
+            metrics.append((inc["generation"], inc["id"], inc["m"]))
             print(
                 f"gen {inc['generation']}: incumbent p{inc['id']} "
-                f"torso_h={inc['desc_torso_h']:.4f}  "
+                f"{args.metric}={inc['m']:.4f}  "
                 f"(batch {batches}, {stats['votes']} votes cast, {time.time()-t0:.0f}s elapsed)",
                 flush=True,
             )
@@ -113,23 +122,26 @@ async def amain():
     # -- checkpoint assertions ------------------------------------------------
     failures = []
 
-    if heights[-1][0] < args.target_gens:
+    if metrics[-1][0] < args.target_gens:
         failures.append(
-            f"only reached gen {heights[-1][0]} of {args.target_gens} "
+            f"only reached gen {metrics[-1][0]} of {args.target_gens} "
             f"after {batches} vote batches"
         )
 
-    for (g0, p0, h0), (g1, p1, h1) in zip(heights, heights[1:]):
-        if h1 < h0 - HEIGHT_TOLERANCE:
+    for (g0, p0, m0), (g1, p1, m1) in zip(metrics, metrics[1:]):
+        if m1 < m0 - tolerance:
             failures.append(
-                f"torso height regressed: gen {g0} p{p0} {h0:.4f} -> gen {g1} p{p1} {h1:.4f}"
+                f"{args.metric} regressed: gen {g0} p{p0} {m0:.4f} -> gen {g1} p{p1} {m1:.4f}"
             )
 
+    # Only sequential-test resolutions; only votes cast before the verdict —
+    # in-flight pairs can legitimately deliver votes after a contest closes.
     contest_counts = await conn.fetch(
         """SELECT c.id, c.status, count(v.id) AS n
            FROM contests c LEFT JOIN votes v
              ON v.contest_id = c.id AND v.pair_type='contest'
-           WHERE c.status <> 'open'
+                AND v.created_at <= c.resolved_at
+           WHERE c.status IN ('challenger_won', 'incumbent_held')
            GROUP BY c.id, c.status"""
     )
     out_of_range = [
@@ -139,12 +151,13 @@ async def amain():
         failures.append(f"contests resolved outside 3-20 comparisons: {out_of_range}")
 
     report = {
+        "metric": args.metric,
         "target_gens": args.target_gens,
-        "reached_gen": heights[-1][0],
+        "reached_gen": metrics[-1][0],
         "vote_batches": batches,
         "elapsed_s": round(time.time() - t0),
-        "incumbent_heights": [
-            {"generation": g, "policy": p, "torso_h": h} for g, p, h in heights
+        "incumbent_metrics": [
+            {"generation": g, "policy": p, args.metric: m} for g, p, m in metrics
         ],
         "resolved_contests": len(contest_counts),
         "resolution_counts": sorted(r["n"] for r in contest_counts),

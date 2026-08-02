@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS contests (
   challenger_policy   BIGINT NOT NULL REFERENCES policies(id),
   n_comparisons       INT DEFAULT 0,
   n_challenger_wins   INT DEFAULT 0,
-  status              TEXT NOT NULL,    -- 'open'|'challenger_won'|'incumbent_held'
+  status              TEXT NOT NULL,    -- 'open'|'challenger_won'|'incumbent_held'|'mooted'
+                                        -- 'mooted': closed unresolved at generation turnover
   resolved_at         TIMESTAMPTZ
 );
 

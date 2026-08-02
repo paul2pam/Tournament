@@ -211,10 +211,12 @@ async def resolve_contests(conn, weights: dict) -> bool:
             )
 
     if promoted:
-        # Generation turned over: remaining open contests are against a retired incumbent — moot.
+        # Generation turned over: remaining open contests are against a retired
+        # incumbent. 'mooted', not 'incumbent_held' — these were never resolved by
+        # the sequential test and must not count as resolutions.
         for ct in await conn.fetch("SELECT * FROM contests WHERE status='open'"):
             await conn.execute(
-                "UPDATE contests SET status='incumbent_held', resolved_at=now() WHERE id=$1",
+                "UPDATE contests SET status='mooted', resolved_at=now() WHERE id=$1",
                 ct["id"],
             )
             await conn.execute(
