@@ -359,8 +359,17 @@ async def refill_queue(conn, rng) -> int:
             i = int(rng.integers(len(contest_clips)))
             contest_id, ia, ib = contest_clips[i]
             pair_type = "contest"
-            a = int(rng.choice(ia))
-            b = int(rng.choice(ib))
+            # Stratified pairing: cycle a per-contest shuffled deck of all clip
+            # matchups instead of sampling with replacement — otherwise a 4-vote
+            # sweep can ride one lucky window (spec §5's "mediocre policy with one
+            # lucky 3-second window" failure, observed as velocity regressions in
+            # Phase 1 run 5).
+            deck = [(a_, b_) for a_ in ia for b_ in ib]
+            np.random.default_rng(contest_id).shuffle(deck)
+            n_prior = await conn.fetchval(
+                "SELECT count(*) FROM pair_queue WHERE contest_id=$1", contest_id
+            )
+            a, b = deck[n_prior % len(deck)]
         else:
             break
         if rng.random() < 0.5:   # randomize left/right; clip_a renders left
