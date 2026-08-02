@@ -68,6 +68,10 @@ async def amain():
     p.add_argument("--max-batches", type=int, default=300)
     p.add_argument("--seed", type=int, default=1234)
     p.add_argument("--metric", choices=list(METRIC_COLUMN), default="velocity")
+    # Spec's Phase 1 gate is a CLEAN synthetic signal (noise/bots belong to
+    # robustness runs, not the checkpoint): defaults are clean.
+    p.add_argument("--noise", type=float, default=0.0)
+    p.add_argument("--bot-frac", type=float, default=0.0)
     args = p.parse_args()
     metric_col = METRIC_COLUMN[args.metric]
     tolerance = METRIC_TOLERANCE[args.metric]
@@ -104,8 +108,8 @@ async def amain():
 
     while metrics[-1][0] < args.target_gens and batches < args.max_batches:
         stats = run_votes(
-            args.base_url, args.votes_per_batch, rng, bot_frac=0.2, noise=0.10,
-            metric=args.metric,
+            args.base_url, args.votes_per_batch, rng,
+            bot_frac=args.bot_frac, noise=args.noise, metric=args.metric,
         )
         batches += 1
         run_worker(["--cycle", "--seed", str(args.seed + batches)], env_overrides)
