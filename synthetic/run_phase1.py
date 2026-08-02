@@ -31,11 +31,27 @@ import asyncpg
 import httpx
 import numpy as np
 
+from common import blobs
 from common.config import DATABASE_URL
-from synthetic.voter import run_votes
+from synthetic.voter import METRICS, run_votes
 
 METRIC_COLUMN = {"torso_h": "desc_torso_h", "velocity": "desc_velocity"}
 METRIC_TOLERANCE = {"torso_h": 0.01, "velocity": 0.02}
+
+
+async def clip_metric(conn, policy_id: int, metric_fn) -> float:
+    """Mean metric over a policy's kept clips — the quantity voters actually judge.
+    The episode-level descriptor can diverge from it (windows are partial evidence);
+    the checkpoint asserts on this, and reports both."""
+    keys = [
+        r["blob_key"]
+        for r in await conn.fetch(
+            "SELECT blob_key FROM clips WHERE policy_id=$1 AND blob_key<>''", policy_id
+        )
+    ]
+    if not keys:
+        return float("nan")
+    return float(np.mean([metric_fn(blobs.get_json(k)) for k in keys]))
 
 
 def run_worker(args_list, env_overrides):
@@ -93,18 +109,25 @@ async def amain():
     subprocess.run(["rm", "-rf", "blobs/clips", "checkpoints/policies"], check=True)
     run_worker(["--bootstrap", "--stand-ckpt", args.stand_ckpt, "--seed", str(args.seed)], env_overrides)
 
-    metrics = []  # (generation, incumbent policy id, metric value) at each promotion
+    metric_fn = METRICS[args.metric]
+    metrics = []  # (generation, policy id, clip-level value, episode-level value)
     t0 = time.time()
     batches = 0
 
-    async def incumbent_row():
-        return await conn.fetchrow(
+    async def incumbent_entry():
+        r = await conn.fetchrow(
             f"SELECT id, generation, {metric_col} AS m FROM policies WHERE status='incumbent'"
         )
+        cv = await clip_metric(conn, r["id"], metric_fn)
+        return (r["generation"], r["id"], cv, r["m"])
 
-    inc = await incumbent_row()
-    metrics.append((inc["generation"], inc["id"], inc["m"]))
-    print(f"gen {inc['generation']}: incumbent p{inc['id']} {args.metric}={inc['m']:.4f}", flush=True)
+    entry = await incumbent_entry()
+    metrics.append(entry)
+    print(
+        f"gen {entry[0]}: incumbent p{entry[1]} clip_{args.metric}={entry[2]:.4f} "
+        f"episode={entry[3]:.4f}",
+        flush=True,
+    )
 
     while metrics[-1][0] < args.target_gens and batches < args.max_batches:
         stats = run_votes(
@@ -113,13 +136,13 @@ async def amain():
         )
         batches += 1
         run_worker(["--cycle", "--seed", str(args.seed + batches)], env_overrides)
-        inc = await incumbent_row()
-        if inc["generation"] != metrics[-1][0]:
-            metrics.append((inc["generation"], inc["id"], inc["m"]))
+        entry = await incumbent_entry()
+        if entry[0] != metrics[-1][0]:
+            metrics.append(entry)
             print(
-                f"gen {inc['generation']}: incumbent p{inc['id']} "
-                f"{args.metric}={inc['m']:.4f}  "
-                f"(batch {batches}, {stats['votes']} votes cast, {time.time()-t0:.0f}s elapsed)",
+                f"gen {entry[0]}: incumbent p{entry[1]} "
+                f"clip_{args.metric}={entry[2]:.4f} episode={entry[3]:.4f}  "
+                f"(batch {batches}, {time.time()-t0:.0f}s elapsed)",
                 flush=True,
             )
 
@@ -132,10 +155,10 @@ async def amain():
             f"after {batches} vote batches"
         )
 
-    for (g0, p0, m0), (g1, p1, m1) in zip(metrics, metrics[1:]):
-        if m1 < m0 - tolerance:
+    for (g0, p0, c0, _e0), (g1, p1, c1, _e1) in zip(metrics, metrics[1:]):
+        if c1 < c0 - tolerance:
             failures.append(
-                f"{args.metric} regressed: gen {g0} p{p0} {m0:.4f} -> gen {g1} p{p1} {m1:.4f}"
+                f"clip_{args.metric} regressed: gen {g0} p{p0} {c0:.4f} -> gen {g1} p{p1} {c1:.4f}"
             )
 
     # Only sequential-test resolutions; only votes cast before the verdict —
@@ -161,7 +184,13 @@ async def amain():
         "vote_batches": batches,
         "elapsed_s": round(time.time() - t0),
         "incumbent_metrics": [
-            {"generation": g, "policy": p, args.metric: m} for g, p, m in metrics
+            {
+                "generation": g,
+                "policy": p,
+                f"clip_{args.metric}": c,
+                f"episode_{args.metric}": e,
+            }
+            for g, p, c, e in metrics
         ],
         "resolved_contests": len(contest_counts),
         "resolution_counts": sorted(r["n"] for r in contest_counts),

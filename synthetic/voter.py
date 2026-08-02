@@ -58,16 +58,22 @@ def run_votes(
                     winner = a["id"]                      # always left
                     dt = int(rng.integers(50, 250))       # bot-speed
                 else:
-                    # a human's first-order judgment: a mostly-fallen clip loses to
-                    # an upright one regardless of the finer metric (this is also
-                    # what makes the voter pass attention checks, as humans would)
-                    fa = mean_torso_h(a["trajectory"]) < 0.5
-                    fb = mean_torso_h(b["trajectory"]) < 0.5
-                    if fa != fb:
-                        winner = b["id"] if fa else a["id"]
+                    # Coherent total order: the metric decides; posture breaks only
+                    # near-ties. (An earlier posture-first rule vetoed the metric —
+                    # it scored fast CRAWLING as "fallen" and promoted a motionless
+                    # stander over the lineage's fastest mover.) The tie-break is
+                    # what passes attention checks: stander vs ragdoll is a 0-vs-0
+                    # velocity tie, and upright wins it, as a human would vote.
+                    ha, hb = score(a["trajectory"]), score(b["trajectory"])
+                    if abs(ha - hb) < 0.05:
+                        fa = mean_torso_h(a["trajectory"]) < 0.5
+                        fb = mean_torso_h(b["trajectory"]) < 0.5
+                        if fa != fb:
+                            winner = b["id"] if fa else a["id"]
+                        else:
+                            winner = a["id"] if ha >= hb else b["id"]
                     else:
-                        ha, hb = score(a["trajectory"]), score(b["trajectory"])
-                        winner = a["id"] if ha >= hb else b["id"]
+                        winner = a["id"] if ha > hb else b["id"]
                     if rng.random() < noise:
                         winner = b["id"] if winner == a["id"] else a["id"]
                     dt = int(rng.integers(700, 2500))
