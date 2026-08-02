@@ -29,6 +29,10 @@ def perturb(net: ActorCritic, scale: float, seed: int) -> ActorCritic:
 def make_challenger(incumbent: ActorCritic, scale: float, seed: int, finetune: bool = True) -> ActorCritic:
     child = perturb(incumbent, scale, seed)
     if finetune:
+        # env_task='neutral': viability repair only. The stand-task reward
+        # (height shaping + healthy-z termination) was dragging every mutant
+        # back toward standing — anti-aligned with whatever direction the
+        # crowd is steering the lineage (spec §7: repair, don't steer).
         train(
             child,
             total_steps=FINETUNE_STEPS,
@@ -38,6 +42,7 @@ def make_challenger(incumbent: ActorCritic, scale: float, seed: int, finetune: b
             anneal_lr=False,
             seed=seed,
             quiet=True,
+            env_task="neutral",
         )
     return child
 

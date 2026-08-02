@@ -18,8 +18,8 @@ from sim.policy import ActorCritic, save_policy
 class VecEnv:
     """Synchronous in-process vector of HumanoidEnvs with autoreset."""
 
-    def __init__(self, n: int, seed: int, horizon: int = 1000):
-        self.envs = [HumanoidEnv(seed=seed + i) for i in range(n)]
+    def __init__(self, n: int, seed: int, horizon: int = 1000, task: str = "stand"):
+        self.envs = [HumanoidEnv(seed=seed + i, task=task) for i in range(n)]
         self.obs_dim = self.envs[0].obs_dim
         self.act_dim = self.envs[0].act_dim
         self.horizon = horizon
@@ -70,6 +70,7 @@ def train(
     save_path: str | None = None,
     quiet: bool = False,
     subproc: bool = False,
+    env_task: str = "stand",
 ) -> ActorCritic:
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -77,9 +78,9 @@ def train(
     if subproc:
         from sim.vecenv import SubprocVecEnv
 
-        venv = SubprocVecEnv(num_envs, seed=seed * 1000 + 1)
+        venv = SubprocVecEnv(num_envs, seed=seed * 1000 + 1, task=env_task)
     else:
-        venv = VecEnv(num_envs, seed=seed * 1000 + 1)
+        venv = VecEnv(num_envs, seed=seed * 1000 + 1, task=env_task)
     opt = torch.optim.Adam(net.parameters(), lr=lr, eps=1e-5)
 
     batch_size = num_envs * num_steps

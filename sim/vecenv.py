@@ -12,11 +12,11 @@ OBS_DIM = 53
 ACT_DIM = 21
 
 
-def _worker(pipe, seed: int, horizon: int):
+def _worker(pipe, seed: int, horizon: int, task: str):
     # Import inside the child so 'spawn' start method works (macOS default).
     from sim.env import HumanoidEnv
 
-    env = HumanoidEnv(seed=seed)
+    env = HumanoidEnv(seed=seed, task=task)
     t, ep_ret = 0, 0.0
     obs = env.reset()
     pipe.send(obs)
@@ -42,12 +42,12 @@ class SubprocVecEnv:
     obs_dim = OBS_DIM
     act_dim = ACT_DIM
 
-    def __init__(self, n: int, seed: int, horizon: int = 1000):
+    def __init__(self, n: int, seed: int, horizon: int = 1000, task: str = "stand"):
         ctx = mp.get_context()
         self.pipes, self.procs = [], []
         for i in range(n):
             parent, child = ctx.Pipe()
-            p = ctx.Process(target=_worker, args=(child, seed + i, horizon), daemon=True)
+            p = ctx.Process(target=_worker, args=(child, seed + i, horizon, task), daemon=True)
             p.start()
             child.close()
             self.pipes.append(parent)

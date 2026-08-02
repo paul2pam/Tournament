@@ -22,12 +22,23 @@ def load_model() -> mujoco.MjModel:
 
 
 class HumanoidEnv:
-    """Stay-alive / standing task. obs = qpos[2:] ++ qvel (53,); action in [-1,1]^21."""
+    """obs = qpos[2:] ++ qvel (53,); action in [-1,1]^21.
+
+    task='stand'   — Phase 0 pretraining: height shaping, healthy-z termination.
+    task='neutral' — challenger fine-tune viability repair: alive + control cost
+                     only, terminate only on physics failure. The fine-tune must
+                     hold NO opinion about posture or motion style — a crawling
+                     (or someday backflipping) lineage's children must not be
+                     dragged back toward standing (spec §7: repair, don't steer).
+    """
 
     HEALTHY_Z = (0.9, 2.0)
     RESET_NOISE = 0.01
+    BLOWUP_QVEL = 100.0
 
-    def __init__(self, seed: int = 0):
+    def __init__(self, seed: int = 0, task: str = "stand"):
+        assert task in ("stand", "neutral")
+        self.task = task
         self.model = load_model()
         self.data = mujoco.MjData(self.model)
         self.rng = np.random.default_rng(seed)
@@ -54,16 +65,20 @@ class HumanoidEnv:
             mujoco.mj_step(self.model, self.data)
 
         z = self.data.qpos[2]
-        healthy = self.HEALTHY_Z[0] <= z <= self.HEALTHY_Z[1] and np.isfinite(self.data.qpos).all()
+        finite = np.isfinite(self.data.qpos).all() and np.isfinite(self.data.qvel).all()
         vxy = self.data.qvel[:2]
 
-        reward = (
-            5.0                                   # alive bonus
-            + 2.0 * min(z, 1.4)                   # height shaping, capped
-            - 0.1 * float(np.square(action).sum())
-            - 0.05 * float(np.square(vxy).sum())
-        )
-        terminated = not healthy
+        if self.task == "stand":
+            reward = (
+                5.0                                   # alive bonus
+                + 2.0 * min(z, 1.4)                   # height shaping, capped
+                - 0.1 * float(np.square(action).sum())
+                - 0.05 * float(np.square(vxy).sum())
+            )
+            terminated = not (finite and self.HEALTHY_Z[0] <= z <= self.HEALTHY_Z[1])
+        else:  # neutral: sim-stability only
+            reward = 2.0 - 0.05 * float(np.square(action).sum())
+            terminated = not finite or np.abs(self.data.qvel).max() > self.BLOWUP_QVEL or z > 3.0
         return self._obs(), reward, terminated
 
     # Used by rollout.py: full generalized coordinates for the trajectory format.
