@@ -53,6 +53,7 @@ def rollout_policy(
     base_seed: int,
     n_clips: int = CLIPS_PER_POLICY,
     prefer_alive: bool = False,
+    prefer_still: bool = False,
 ):
     """Roll out a policy into candidate clips.
 
@@ -61,6 +62,9 @@ def rollout_policy(
     incumbent, whose weak policy spends most of each episode fallen — better to
     show it trying and falling than the aftermath. Normal challenger rollouts
     keep unbiased sampling (spec §7: window choice must not become a tell).
+
+    prefer_still: keep the LEAST dynamic windows — the ragdoll attention-check
+    policy, where the spec wants an *obvious* corpse, not the dramatic fall.
 
     Returns (clips, episodes):
       clips: list of {seed, window_start_s, blob_key, frames} — frames kept in-memory
@@ -77,7 +81,7 @@ def rollout_policy(
         seed = base_seed + e
         ep = run_episode(net, seed)
         episodes[seed] = ep
-        starts = sample_windows(rng, n=10 if prefer_alive else per_ep)
+        starts = sample_windows(rng, n=10 if (prefer_alive or prefer_still) else per_ep)
         windows = [(s, ep[s : s + CLIP_FRAMES]) for s in starts]
         if prefer_alive:
             windows.sort(
@@ -87,6 +91,9 @@ def rollout_policy(
                 ),
                 reverse=True,
             )
+            windows = windows[:per_ep]
+        elif prefer_still:
+            windows.sort(key=lambda sw: float(np.abs(np.diff(sw[1][:, 7:], axis=0)).max()))
             windows = windows[:per_ep]
         for start, window in windows:
             key = f"clips/{policy_id}/{seed}_{start}.json.gz"

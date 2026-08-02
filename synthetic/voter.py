@@ -26,6 +26,14 @@ def mean_velocity(trajectory: dict) -> float:
     return float(speeds.mean())
 
 
+def is_dead(trajectory: dict) -> bool:
+    """Prone AND still in the final second — a settled corpse. A worming crawler
+    keeps its joints moving and is NOT dead, however low its torso."""
+    joints = np.asarray(trajectory["joints"], dtype=float)
+    final_speed = float(np.abs(np.diff(joints[-30:], axis=0)).max() * trajectory["fps"])
+    return mean_torso_h(trajectory) < 0.35 and final_speed < 0.3
+
+
 METRICS = {"torso_h": mean_torso_h, "velocity": mean_velocity}
 
 
@@ -58,22 +66,15 @@ def run_votes(
                     winner = a["id"]                      # always left
                     dt = int(rng.integers(50, 250))       # bot-speed
                 else:
-                    # Coherent total order: the metric decides; posture breaks only
-                    # near-ties. (An earlier posture-first rule vetoed the metric —
-                    # it scored fast CRAWLING as "fallen" and promoted a motionless
-                    # stander over the lineage's fastest mover.) The tie-break is
-                    # what passes attention checks: stander vs ragdoll is a 0-vs-0
-                    # velocity tie, and upright wins it, as a human would vote.
-                    ha, hb = score(a["trajectory"]), score(b["trajectory"])
-                    if abs(ha - hb) < 0.05:
-                        fa = mean_torso_h(a["trajectory"]) < 0.5
-                        fb = mean_torso_h(b["trajectory"]) < 0.5
-                        if fa != fb:
-                            winner = b["id"] if fa else a["id"]
-                        else:
-                            winner = a["id"] if ha >= hb else b["id"]
-                    else:
-                        winner = a["id"] if ha > hb else b["id"]
+                    # Coherent total order: a settled corpse loses to anything alive
+                    # (this is what passes attention checks, as a human would); among
+                    # the living, the metric decides. Earlier variants — posture-first
+                    # (scored fast crawling as fallen) and near-tie posture breaks
+                    # (the ragdoll's fall itself out-runs a stander) — were incoherent
+                    # with the metric and are deliberately gone.
+                    ha = -1.0 if is_dead(a["trajectory"]) else score(a["trajectory"])
+                    hb = -1.0 if is_dead(b["trajectory"]) else score(b["trajectory"])
+                    winner = a["id"] if ha >= hb else b["id"]
                     if rng.random() < noise:
                         winner = b["id"] if winner == a["id"] else a["id"]
                     dt = int(rng.integers(700, 2500))

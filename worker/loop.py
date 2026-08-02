@@ -64,11 +64,18 @@ async def set_state(conn, key: str, value: str) -> None:
 
 # ---------------------------------------------------------------- clip creation
 
-async def add_policy_clips(conn, policy_id: int, net, rng, skip_filter: bool = False) -> int:
+async def add_policy_clips(
+    conn, policy_id: int, net, rng, skip_filter: bool = False, still: bool = False
+) -> int:
     """Roll out, filter (with 15% leak), store descriptors + clip rows. Returns kept count.
-    skip_filter also biases window sampling toward upright frames (bootstrap seed)."""
+    skip_filter also biases window sampling toward upright frames (bootstrap seed);
+    still=True instead keeps the least dynamic windows (obvious-ragdoll checks)."""
     clips, episodes = rollout_policy(
-        net, policy_id, base_seed=policy_id * 1000, prefer_alive=skip_filter
+        net,
+        policy_id,
+        base_seed=policy_id * 1000,
+        prefer_alive=skip_filter and not still,
+        prefer_still=still,
     )
     dv, dh = policy_descriptors(episodes)
     await conn.execute(
@@ -390,7 +397,7 @@ async def bootstrap(conn, rng, stand_ckpt: str = "checkpoints/stand.pt") -> None
 
     rag_id = await insert_policy(conn, 0, None, "ragdoll")
     await conn.execute("UPDATE policies SET ckpt_path='zero' WHERE id=$1", rag_id)
-    kept = await add_policy_clips(conn, rag_id, ZeroPolicy(), rng, skip_filter=True)
+    kept = await add_policy_clips(conn, rag_id, ZeroPolicy(), rng, skip_filter=True, still=True)
     print(f"  ragdoll p{rag_id}: {kept} clips")
 
     await set_state(conn, "generation", "0")
