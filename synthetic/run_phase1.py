@@ -88,6 +88,9 @@ async def amain():
     # robustness runs, not the checkpoint): defaults are clean.
     p.add_argument("--noise", type=float, default=0.0)
     p.add_argument("--bot-frac", type=float, default=0.0)
+    p.add_argument("--resume", action="store_true",
+                   help="continue from current DB state instead of resetting; "
+                        "lineage history is rebuilt so assertions span the whole run")
     args = p.parse_args()
     metric_col = METRIC_COLUMN[args.metric]
     tolerance = METRIC_TOLERANCE[args.metric]
@@ -104,10 +107,16 @@ async def amain():
     with httpx.Client(timeout=10) as c:
         c.get(f"{args.base_url}/state").raise_for_status()
 
-    print("== resetting DB + bootstrapping from", args.stand_ckpt, flush=True)
-    await reset_db(conn)
-    subprocess.run(["rm", "-rf", "blobs/clips", "checkpoints/policies"], check=True)
-    run_worker(["--bootstrap", "--stand-ckpt", args.stand_ckpt, "--seed", str(args.seed)], env_overrides)
+    if args.resume:
+        n_inc = await conn.fetchval("SELECT count(*) FROM policies WHERE status='incumbent'")
+        if n_inc != 1:
+            print("nothing to resume from"); sys.exit(2)
+        print("== resuming from current DB state", flush=True)
+    else:
+        print("== resetting DB + bootstrapping from", args.stand_ckpt, flush=True)
+        await reset_db(conn)
+        subprocess.run(["rm", "-rf", "blobs/clips", "checkpoints/policies"], check=True)
+        run_worker(["--bootstrap", "--stand-ckpt", args.stand_ckpt, "--seed", str(args.seed)], env_overrides)
 
     metric_fn = METRICS[args.metric]
     metrics = []  # (generation, policy id, clip-level value, episode-level value)
@@ -121,13 +130,23 @@ async def amain():
         cv = await clip_metric(conn, r["id"], metric_fn)
         return (r["generation"], r["id"], cv, r["m"])
 
-    entry = await incumbent_entry()
-    metrics.append(entry)
-    print(
-        f"gen {entry[0]}: incumbent p{entry[1]} clip_{args.metric}={entry[2]:.4f} "
-        f"episode={entry[3]:.4f}",
-        flush=True,
-    )
+    if args.resume:
+        # rebuild the full promotion history so assertions span the whole lineage
+        for r in await conn.fetch(
+            f"""SELECT id, generation, {metric_col} AS m FROM policies
+                WHERE promoted_at IS NOT NULL ORDER BY promoted_at"""
+        ):
+            cv = await clip_metric(conn, r["id"], metric_fn)
+            metrics.append((r["generation"], r["id"], cv, r["m"]))
+        print(f"resumed at gen {metrics[-1][0]} with {len(metrics)} lineage entries", flush=True)
+    else:
+        entry = await incumbent_entry()
+        metrics.append(entry)
+        print(
+            f"gen {entry[0]}: incumbent p{entry[1]} clip_{args.metric}={entry[2]:.4f} "
+            f"episode={entry[3]:.4f}",
+            flush=True,
+        )
 
     while metrics[-1][0] < args.target_gens and batches < args.max_batches:
         stats = run_votes(
