@@ -221,8 +221,10 @@ async def get_timeline():
     p = await db.pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
+            # status <> 'rejected' rather than IN (incumbent, retired): an ancestor
+            # mid-comeback is briefly status='challenger' and must stay listed
             """SELECT id, generation, promoted_at, status FROM policies
-               WHERE promoted_at IS NOT NULL AND status IN ('incumbent', 'retired')
+               WHERE promoted_at IS NOT NULL AND status <> 'rejected'
                ORDER BY promoted_at"""
         )
         out = []

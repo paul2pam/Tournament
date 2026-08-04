@@ -19,6 +19,7 @@ import numpy as np
 
 from common import blobs
 from common.config import (
+    ANCESTOR_PROB,
     CKPT_DIR,
     DATABASE_URL,
     LEAK_RATE,
@@ -200,22 +201,20 @@ async def resolve_contests(conn, weights: dict) -> bool:
                 "UPDATE policies SET status='retired' WHERE id=$1", ct["incumbent_policy"]
             )
             await conn.execute(
-                "UPDATE policies SET status='incumbent', promoted_at=now() WHERE id=$1",
-                ct["challenger_policy"],
+                # generation = incumbent's + 1 for fresh mutants AND returning
+                # ancestors alike (a re-crowned ancestor becomes a NEW generation)
+                """UPDATE policies SET status='incumbent', promoted_at=now(),
+                       generation=$2 WHERE id=$1""",
+                ct["challenger_policy"], ct["generation"] + 1,
             )
-            gen = await conn.fetchval(
-                "SELECT generation FROM policies WHERE id=$1", ct["challenger_policy"]
-            )
-            await set_state(conn, "generation", str(gen))
+            await set_state(conn, "generation", str(ct["generation"] + 1))
             promoted = True
         else:
             if ct["status"] == "challenger_won":
                 await conn.execute(
                     "UPDATE contests SET status='incumbent_held' WHERE id=$1", ct["id"]
                 )
-            await conn.execute(
-                "UPDATE policies SET status='rejected' WHERE id=$1", ct["challenger_policy"]
-            )
+            await _demote_challenger(conn, ct["challenger_policy"])
 
     if promoted:
         # Generation turned over: remaining open contests are against a retired
@@ -226,10 +225,21 @@ async def resolve_contests(conn, weights: dict) -> bool:
                 "UPDATE contests SET status='mooted', resolved_at=now() WHERE id=$1",
                 ct["id"],
             )
-            await conn.execute(
-                "UPDATE policies SET status='rejected' WHERE id=$1", ct["challenger_policy"]
-            )
+            await _demote_challenger(conn, ct["challenger_policy"])
     return promoted
+
+
+async def _demote_challenger(conn, policy_id: int) -> None:
+    """Losing fresh mutants are rejected (blobs pruned). A losing ANCESTOR
+    challenger (replay buffer entrant, recognizable by promoted_at) returns to
+    'retired' — it keeps its timeline entry and its clips."""
+    was_incumbent = await conn.fetchval(
+        "SELECT promoted_at IS NOT NULL FROM policies WHERE id=$1", policy_id
+    )
+    await conn.execute(
+        "UPDATE policies SET status=$2 WHERE id=$1",
+        policy_id, "retired" if was_incumbent else "rejected",
+    )
 
 
 async def prune_rejected_blobs(conn) -> None:
@@ -303,6 +313,29 @@ async def spawn_pool(conn, rng) -> None:
                 inc["generation"], inc["id"], pid,
             )
         print(f"  challenger p{pid} scale={scale} status={status}")
+
+    # Replay buffer: some pools also field a PAST INCUMBENT as a challenger.
+    # Zero compute (checkpoint and clips already exist); acts as drift rollback
+    # (an ancestor can reclaim the crown), diversity injection, and theater.
+    if rng.random() < ANCESTOR_PROB:
+        anc = await conn.fetchrow(
+            """SELECT p.id, p.generation FROM policies p
+               WHERE p.status='retired' AND p.promoted_at IS NOT NULL AND p.id <> $1
+                 AND EXISTS (SELECT 1 FROM clips c
+                             WHERE c.policy_id=p.id AND c.blob_key <> '')
+               ORDER BY coalesce(p.rating_lb, 0) DESC, random() LIMIT 1""",
+            inc["id"],
+        )
+        if anc is not None:
+            await conn.execute(
+                "UPDATE policies SET status='challenger' WHERE id=$1", anc["id"]
+            )
+            await conn.execute(
+                """INSERT INTO contests (generation, incumbent_policy, challenger_policy, status)
+                   VALUES ($1, $2, $3, 'open')""",
+                inc["generation"], inc["id"], anc["id"],
+            )
+            print(f"  ancestor challenger p{anc['id']} (was gen {anc['generation']}) re-enters")
 
 
 async def _clip_ids(conn, policy_id: int) -> list[int]:

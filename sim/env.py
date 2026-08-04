@@ -6,7 +6,7 @@ so recorded qpos frames are the clip frames with no resampling.
 import numpy as np
 import mujoco
 
-from common.config import SIM_TIMESTEP, FRAME_SKIP, REPO_ROOT
+from common.config import ACTION_FILTER_ALPHA, SIM_TIMESTEP, FRAME_SKIP, REPO_ROOT
 
 MODEL_PATH = str(REPO_ROOT / "sim" / "assets" / "humanoid.xml")
 
@@ -44,6 +44,7 @@ class HumanoidEnv:
         self.rng = np.random.default_rng(seed)
         self.obs_dim = (self.model.nq - 2) + self.model.nv   # 26 + 27 = 53
         self.act_dim = self.model.nu                          # 21
+        self._act_filt = np.zeros(self.act_dim)
 
     def _obs(self) -> np.ndarray:
         return np.concatenate([self.data.qpos[2:], self.data.qvel]).astype(np.float32)
@@ -56,11 +57,16 @@ class HumanoidEnv:
         self.data.qpos[:] += self.rng.uniform(-n, n, size=self.model.nq)
         self.data.qvel[:] += self.rng.uniform(-n, n, size=self.model.nv)
         mujoco.mj_forward(self.model, self.data)
+        self._act_filt[:] = 0.0
         return self._obs()
 
     def step(self, action: np.ndarray):
         action = np.clip(action, -1.0, 1.0)
-        self.data.ctrl[:] = action
+        # Substrate smoothing: EMA low-pass on torques. Bang-bang commands
+        # physically can't reach the joints, so every policy — including raw
+        # weight-perturbation mutants — moves coherently instead of twitching.
+        self._act_filt = ACTION_FILTER_ALPHA * action + (1.0 - ACTION_FILTER_ALPHA) * self._act_filt
+        self.data.ctrl[:] = self._act_filt
         for _ in range(FRAME_SKIP):
             mujoco.mj_step(self.model, self.data)
 
