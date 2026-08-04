@@ -403,6 +403,12 @@ async def refill_queue(conn, rng) -> int:
                 "SELECT count(*) FROM pair_queue WHERE contest_id=$1", contest_id
             )
             a, b = deck[n_prior % len(deck)]
+        elif ancestor_clips and inc_clips:
+            # no open contests (mid-breeding): serve ancestor pairs rather than
+            # starving the queue — voters always have something to judge
+            pair_type, contest_id = "ancestor", None
+            a = int(rng.choice(inc_clips))
+            b = int(rng.choice(ancestor_clips))
         else:
             break
         if rng.random() < 0.5:   # randomize left/right; clip_a renders left

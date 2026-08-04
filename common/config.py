@@ -14,11 +14,11 @@ CKPT_DIR = Path(os.environ.get("CKPT_DIR", REPO_ROOT / "checkpoints"))
 # Server-side salt for hashing voter IPs. Not secret-critical in dev.
 IP_HASH_SALT = os.environ.get("IP_HASH_SALT", "dev-salt")
 
-# Clip/rollout geometry. 240Hz physics, control+record every 8 steps -> exactly 30fps.
 # Action low-pass (EMA) coefficient: 1.0 = no filtering. Applied in env.step for
 # training, fine-tunes, and rollouts alike, so the substrate itself is smooth.
 ACTION_FILTER_ALPHA = float(os.environ.get("ACTION_FILTER_ALPHA", 0.6))
 
+# Clip/rollout geometry. 240Hz physics, control+record every 8 steps -> exactly 30fps.
 SIM_TIMESTEP = 1.0 / 240.0
 FRAME_SKIP = 8                     # control rate = 30 Hz
 CLIP_FPS = 30
@@ -47,7 +47,6 @@ ANCESTOR_PROB = float(os.environ.get("ANCESTOR_PROB", 0.5))
 # Degeneracy filter
 LEAK_RATE = 0.15
 
-# Pair queue composition
-QUEUE_SHARE_CONTEST = 0.80
+# Pair queue composition: contest pairs take the remainder (~80%)
 QUEUE_SHARE_ANCESTOR = 0.15
 QUEUE_SHARE_CHECK = 0.05
