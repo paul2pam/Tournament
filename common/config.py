@@ -33,9 +33,13 @@ CLIPS_PER_POLICY = 4
 CONTEST_MAX_COMPARISONS = 20
 CONTEST_POSTERIOR_THRESHOLD = 0.95
 
-# Challenger pool (env-overridable so the Phase 1 harness can run small/fast)
+# Challenger pool (env-overridable so the Phase 1 harness can run small/fast).
+# The scale ladder reaches 0.45: against a refined incumbent, small perturbations
+# are pure noise on a tuned gait and pools sweep 4-0 forever (observed: ~200
+# consecutive pool losses at scales <= 0.2). Big scales + neutral repair jump
+# behavior basins; the crowd discards the wreckage cheaply (spec §7).
 POOL_SIZE = int(os.environ.get("POOL_SIZE", 6))
-PERTURB_SCALES = [0.01, 0.02, 0.05, 0.08, 0.12, 0.2]
+PERTURB_SCALES = [0.01, 0.03, 0.06, 0.1, 0.16, 0.25, 0.35, 0.45]
 FINETUNE_STEPS = int(os.environ.get("FINETUNE_STEPS", 40_960))
 
 # Pair queue refill target (unconsumed rows)
