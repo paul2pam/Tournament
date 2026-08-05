@@ -11,6 +11,7 @@ import hashlib
 import time
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -19,7 +20,8 @@ from common.config import CONTEST_MAX_COMPARISONS, IP_HASH_SALT, REPO_ROOT
 from server import db
 from worker.contests import resolve
 
-app = FastAPI(title="crowd-evolved-humanoid")
+app = FastAPI(title="doabackflip.ai")
+app.add_middleware(GZipMiddleware, minimum_size=1024)   # trajectories compress ~10x
 
 
 @app.on_event("shutdown")
@@ -221,8 +223,10 @@ async def get_timeline():
     p = await db.pool()
     async with p.acquire() as conn:
         rows = await conn.fetch(
+            # status <> 'rejected' rather than IN (incumbent, retired): an ancestor
+            # mid-comeback is briefly status='challenger' and must stay listed
             """SELECT id, generation, promoted_at, status FROM policies
-               WHERE promoted_at IS NOT NULL AND status IN ('incumbent', 'retired')
+               WHERE promoted_at IS NOT NULL AND status <> 'rejected'
                ORDER BY promoted_at"""
         )
         out = []

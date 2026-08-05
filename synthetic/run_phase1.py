@@ -148,11 +148,13 @@ async def amain():
             flush=True,
         )
 
+    total_votes = 0
     while metrics[-1][0] < args.target_gens and batches < args.max_batches:
         stats = run_votes(
             args.base_url, args.votes_per_batch, rng,
             bot_frac=args.bot_frac, noise=args.noise, metric=args.metric,
         )
+        total_votes += stats["votes"]
         batches += 1
         run_worker(["--cycle", "--seed", str(args.seed + batches)], env_overrides)
         entry = await incumbent_entry()
@@ -161,7 +163,7 @@ async def amain():
             print(
                 f"gen {entry[0]}: incumbent p{entry[1]} "
                 f"clip_{args.metric}={entry[2]:.4f} episode={entry[3]:.4f}  "
-                f"(batch {batches}, {time.time()-t0:.0f}s elapsed)",
+                f"(batch {batches}, {total_votes} votes, {time.time()-t0:.0f}s elapsed)",
                 flush=True,
             )
 

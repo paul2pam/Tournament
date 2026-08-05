@@ -53,7 +53,7 @@ def run_votes(
     sessions = [
         {"id": f"synth-{i}", "bot": rng.random() < bot_frac} for i in range(n_sessions)
     ]
-    stats = {"votes": 0, "resolutions": [], "checks_passed": 0, "checks_failed": 0}
+    stats = {"votes": 0, "resolutions": []}
     consecutive_failures = 0
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         while stats["votes"] < n_votes:
