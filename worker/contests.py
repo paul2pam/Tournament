@@ -12,7 +12,11 @@ import math
 
 from common.config import CONTEST_MAX_COMPARISONS, CONTEST_POSTERIOR_THRESHOLD
 
-MIN_COMPARISONS = 3
+# Spec §5 says obvious mismatches may resolve in 3-4, but with 4 clips per side a
+# 4-vote sweep samples only 4 of 16 matchups — measured ~5% false-promotion rate
+# when clip distributions overlap (observed as clean-vote lineage regressions).
+# 6 minimum comparisons cuts that tail to ~1% while decisive contests still die fast.
+MIN_COMPARISONS = 6
 
 
 def _beta_cdf_at_half(a: float, b: float, n: int = 4096) -> float:
