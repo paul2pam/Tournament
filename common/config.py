@@ -38,7 +38,7 @@ CONTEST_POSTERIOR_THRESHOLD = 0.95
 # are pure noise on a tuned gait and pools sweep 4-0 forever (observed: ~200
 # consecutive pool losses at scales <= 0.2). Big scales + neutral repair jump
 # behavior basins; the crowd discards the wreckage cheaply (spec §7).
-POOL_SIZE = int(os.environ.get("POOL_SIZE", 6))
+POOL_SIZE = int(os.environ.get("POOL_SIZE", 8))   # matches the 8-scale ladder
 PERTURB_SCALES = [0.01, 0.03, 0.06, 0.1, 0.16, 0.25, 0.35, 0.45]
 FINETUNE_STEPS = int(os.environ.get("FINETUNE_STEPS", 40_960))
 
